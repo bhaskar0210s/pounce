@@ -6,8 +6,9 @@ import ServiceManagement
 
 enum Defaults {
     static let apps = "apps"
-    static let recents = "recents"  // the apps and notes chosen, most recent first
+    static let recents = "recents"  // the apps, notes and pages chosen, most recent first
     static let notes = "notes"      // the notes added from Notes: [["id": …, "title": …]]
+    static let panes = "panes"      // the pages of System Settings added: [identifier]
     static let hotKeyCode = "hotKeyCode"
     static let hotKeyModifiers = "hotKeyModifiers"
     static let launchedBefore = "launchedBefore"

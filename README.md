@@ -3,9 +3,9 @@
 <h1 align="center">Pounce</h1>
 
 <p align="center"><b>A small, fast app launcher for your Mac.</b><br>
-Press <kbd>⌘</kbd><kbd>Space</kbd>, type a few letters, press <kbd>Return</kbd>. It looks only through the apps and
-notes you choose, and it does sums too.<br>
-About 510 KB on disk and 9 MB of memory, with no CPU while idle.</p>
+Press <kbd>⌘</kbd><kbd>Space</kbd>, type a few letters, press <kbd>Return</kbd>. It looks only through the apps,
+notes and settings you choose, and it does sums too.<br>
+About 530 KB on disk and 9 MB of memory, with no CPU while idle.</p>
 
 <p align="center">
   <img src="docs/search-dark.png" width="430" alt="Pounce finding Mail and Maps in dark mode">
@@ -22,7 +22,9 @@ About 510 KB on disk and 9 MB of memory, with no CPU while idle.</p>
   Code.
 - **Your notes too.** Add notes from the Notes app, then type a few letters of a note's title: <kbd>Return</kbd>
   opens Notes on that note. See below.
-- **Your last choice comes first.** When several apps or notes match, the one you last chose (with <kbd>↑</kbd>
+- **Displays too.** Add Displays, under System Settings in the settings, and `disp` opens System Settings straight
+  on Displays.
+- **Your last choice comes first.** When several results match, the one you last chose (with <kbd>↑</kbd>
   <kbd>↓</kbd> and <kbd>Return</kbd>, or a click) is on top, whatever letters you type. Choose another one and it
   takes the top spot. Opening the top result with just <kbd>Return</kbd> leaves the order as it is.
 - **A calculator.** Type a sum and the answer appears as you type; <kbd>Return</kbd> copies it. See below.
@@ -86,6 +88,8 @@ Press <kbd>⌘</kbd><kbd>,</kbd> while Pounce is open, or open Pounce from the A
 - **Remove** takes the selected app out of the list. It stays on screen, unchecked, until you close the
   settings, so one click puts it back.
 - **Choose Notes**, on the Notes row, adds notes (see [Notes](#notes)).
+- **Displays**, under System Settings: click its circle, and Pounce finds Displays too. <kbd>Return</kbd> on it
+  opens System Settings straight on Displays.
 
 The settings also hold the shortcut and launch at login.
 
@@ -101,8 +105,8 @@ another shortcut for Pounce.
 ## Private by design
 
 - Pounce never connects to the internet.
-- It keeps its settings on your Mac: the list of apps and notes, the shortcut, and the order you last chose them
-  in.
+- It keeps its settings on your Mac: the apps, notes and settings you added, the shortcut, and the order you last
+  chose them in.
 - With Full Disk Access it reads the titles of your notes, nothing else, and only while you choose notes or have
   the settings open.
 - No accounts, no telemetry, no ads. Pounce is free and open source under the MIT License.
@@ -150,7 +154,7 @@ Apps view. Pounce's settings say which one has it, or you can pick another short
 ## How it stays small
 
 - Swift and AppKit only: no SwiftUI, no web views, no other code. One optimized, stripped binary of about
-  320 KB. Notes are read with SQLite, which is part of macOS.
+  340 KB. Notes are read with SQLite, which is part of macOS.
 - No system text field. Pounce reads the keyboard itself (input methods still work), because a text field makes
   macOS start an AutoFill helper process of about 13 MB for the app.
 - Everything is drawn on the CPU straight into the window's layer. AppKit's own drawing moves larger views onto
@@ -162,7 +166,7 @@ Activity Monitor shows) and `ps`:
 
 | | |
 |---|---|
-| On disk | 512 KB (download: a 260 KB disk image) |
+| On disk | 528 KB (download: a 268 KB disk image) |
 | Memory, 10 seconds after launch | 9.8 MB |
 | Memory, after 10 idle minutes | 9.2 MB |
 | Memory, during 30 minutes of opening, searching, calculating and settings every 2 seconds | about 15 MB, level from the fifth minute |

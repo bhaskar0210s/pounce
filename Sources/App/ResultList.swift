@@ -1,6 +1,6 @@
-// The rows under the search line: apps and notes (with the typed letters in bold) and the calculator's answer. In
-// Settings the same list shows a check mark on each app and note that Pounce looks through. Drawn on the CPU,
-// scrolled by Pounce.
+// The rows under the search line: apps, notes and pages of System Settings (with the typed letters in bold) and the
+// calculator's answer. In Settings the same list shows a check mark on each one that Pounce looks through. Drawn on
+// the CPU, scrolled by Pounce.
 
 import AppKit
 import CoreText
@@ -9,15 +9,17 @@ struct ResultRow {
     enum Kind {
         case app(String)           // path
         case note(String)          // Notes' identifier for it
+        case pane(String)          // the System Settings extension that shows the page
         case calc(Double, String)  // the value, and how it's shown
     }
     var kind: Kind
     var name = ""
     var bold: [Int] = []
-    var checked: Bool?             // Settings: whether the app or note is added
+    var checked: Bool?             // Settings: whether the app, note or page is added
     var accessory: String?         // Settings: a button in the row ("Choose Notes")
-    var indented = false           // Settings: a note, under Notes
-    var detail: String?            // grey, at the right: the app a note opens in
+    var indented = false           // Settings: a note under Notes, a page under System Settings
+    var detail: String?            // grey, at the right: the app a note or page opens in
+    var iconFile: String?          // a note or page: the file whose icon it shows (none: a note in Settings shows a page)
     var line: CTLine?              // built on first draw
 
     var path: String? {
@@ -35,7 +37,7 @@ protocol ResultListDelegate: AnyObject {
 
 let gutter: CGFloat = 6        // between the window's edge and a row's highlight
 private let inset: CGFloat = 10  // between a highlight's edge and its contents
-private let noteIndent: CGFloat = 30  // a note under Notes
+private let noteIndent: CGFloat = 30  // a note under Notes, a page under System Settings
 private let accessorySize: CGFloat = 12
 
 final class ResultList: CanvasView {
@@ -204,18 +206,18 @@ final class ResultList: CanvasView {
                 rows[index].line = line
                 drawLine(context, line, x: x, top: box.minY, height: box.height, font: resultFont, color: isSelected ? selectedText : label)
 
-            case .app, .note:
+            case .app, .note, .pane:
                 let row = rows[index]
                 let shift = row.indented ? noteIndent : 0
                 let rowIcon = iconBox.offsetBy(dx: shift, dy: 0), textX = x + shift
                 if case .app(let path) = row.kind {
                     drawIcon(path, in: rowIcon, scale: scale, context: context)
-                } else if row.checked != nil {
+                } else if let file = row.iconFile {
+                    drawIcon(file, in: rowIcon, scale: scale, context: context)  // a page's own icon, Notes' for a result
+                } else {
                     // In Settings a note has a small page where an app has its icon.
                     let page = NSRect(x: rowIcon.midX - 8, y: (rowIcon.midY - 8).rounded(), width: 16, height: 16)
                     drawGlyph(.note, in: page, color: isSelected ? white : .secondaryLabelColor)
-                } else {
-                    drawIcon(Catalog.notesApp, in: rowIcon, scale: scale, context: context)  // a note opens in Notes
                 }
                 if let checked = row.checked {
                     let circle = checkRect(in: box)
@@ -342,6 +344,7 @@ final class ResultList: CanvasView {
             case .calc(_, let shown): element.setAccessibilityLabel("Result \(shown). Press Return to copy it.")
             case .app: element.setAccessibilityLabel(row.name)
             case .note: element.setAccessibilityLabel("\(row.name), a note in Notes")
+            case .pane: element.setAccessibilityLabel("\(row.name), in System Settings")
             }
             if let checked = row.checked { element.setAccessibilityValue(NSNumber(value: checked)) }
             if let accessory = row.accessory {

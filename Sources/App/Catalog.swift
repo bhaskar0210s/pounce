@@ -1,5 +1,5 @@
-// What Pounce looks through: the apps added in Settings, and the notes added from Notes. Also finds every installed
-// app, for adding them.
+// What Pounce looks through: the apps added in Settings, the notes added from Notes and the pages of System Settings
+// added. Also finds every installed app, for adding them.
 
 import AppKit
 
@@ -18,6 +18,16 @@ struct NoteEntry {
     var title: String { note.title }
 }
 
+/// A page of System Settings, which Pounce opens straight on that page.
+struct PaneEntry {
+    let id: String     // the System Settings extension that shows it
+    let title: String  // as System Settings names it, in the user's language
+    let icon: String   // the file whose icon System Settings shows for it
+    let haystack: Haystack
+
+    var link: String { Catalog.paneLink(id) }
+}
+
 /// Where Notes keeps its notes.
 let notesDatabasePath = NSHomeDirectory() + "/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite"
 
@@ -25,11 +35,17 @@ let notesDatabasePath = NSHomeDirectory() + "/Library/Group Containers/group.com
 final class Catalog {
     /// Notes, which opens the notes added to Pounce.
     static let notesApp = "/System/Applications/Notes.app"
+    /// System Settings, which opens the pages added to Pounce.
+    static let systemSettingsApp = "/System/Applications/System Settings.app"
 
     /// The added apps that exist, by name.
     private(set) var apps: [AppEntry] = []
     /// The added notes, by title.
     private(set) var notes: [NoteEntry] = []
+    /// The added pages of System Settings, by title.
+    private(set) var panes: [PaneEntry] = []
+    /// The pages of System Settings Pounce offers: Displays. Made when first needed.
+    private(set) lazy var offeredPanes = [Catalog.pane("com.apple.Displays-Settings.extension", file: "DisplaysExt.appex", name: "Displays")]
     /// Everything added, as saved: an app on a disk that isn't connected stays in the list for when it is.
     private var paths: [String] = []
     private var icons: [String: CGImage] = [:]  // by path
@@ -52,6 +68,7 @@ final class Catalog {
         }
         rebuild()
         loadNotes()
+        loadPanes()
     }
 
     /// Checks that the added apps are where they were: an app on a disk connected later appears, a deleted one goes.
@@ -118,6 +135,10 @@ final class Catalog {
         realPath((path as NSString).standardizingPath) == realPath(Catalog.notesApp)
     }
 
+    func isSystemSettingsApp(_ path: String) -> Bool {
+        realPath((path as NSString).standardizingPath) == realPath(Catalog.systemSettingsApp)
+    }
+
     // MARK: Notes
 
     /// The saved notes, tidied like the apps: entries that aren't a note identifier and a title are skipped.
@@ -168,6 +189,60 @@ final class Catalog {
         return true
     }
 
+    // MARK: System Settings
+
+    /// The link that opens System Settings on a page.
+    nonisolated static func paneLink(_ id: String) -> String {
+        "x-apple.systempreferences:" + id
+    }
+
+    /// A page as System Settings shows it in its sidebar: the name and icon of the extension that makes it up.
+    private static func pane(_ id: String, file: String, name: String) -> PaneEntry {
+        let path = "/System/Library/ExtensionKit/Extensions/" + file
+        let title = localizedName(of: path) ?? name
+        let icon = FileManager.default.fileExists(atPath: path) ? path : systemSettingsApp
+        return PaneEntry(id: id, title: title, icon: icon, haystack: prepare(title))
+    }
+
+    /// The name an extension's Info.plist gives it, in the user's language (System Settings' own pages keep their
+    /// names in a table of every language). The languages are named: left to itself, Foundation would pick the one
+    /// Pounce speaks, English.
+    private static func localizedName(of path: String) -> String? {
+        guard let data = FileManager.default.contents(atPath: path + "/Contents/Resources/InfoPlist.loctable"),
+              let tables = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: [String: Any]]
+        else { return nil }
+        for language in Bundle.preferredLocalizations(from: Array(tables.keys), forPreferences: Locale.preferredLanguages) + ["en"] {
+            if let name = tables[language]?["CFBundleDisplayName"] as? String, !name.isEmpty { return name }
+        }
+        return nil
+    }
+
+    /// The saved pages that Pounce still offers. Nothing is read from System Settings unless some were added.
+    private func loadPanes() {
+        let saved = (defaults.array(forKey: Defaults.panes) ?? []).compactMap { $0 as? String }
+        panes = saved.isEmpty ? [] : offeredPanes.filter { saved.contains($0.id) }
+    }
+
+    private func savePanes() {
+        defaults.set(panes.map(\.id), forKey: Defaults.panes)
+    }
+
+    func containsPane(_ id: String) -> Bool {
+        panes.contains { $0.id == id }
+    }
+
+    func addPane(_ id: String) {
+        guard !containsPane(id), let pane = offeredPanes.first(where: { $0.id == id }) else { return }
+        panes.append(pane)
+        panes.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        savePanes()
+    }
+
+    func removePane(_ id: String) {
+        panes.removeAll { $0.id == id }
+        savePanes()
+    }
+
     // MARK: Icons
 
     /// An app's icon, drawn once at `points` × `scale` into an sRGB bitmap: drawn into the list from that bitmap, it
@@ -189,14 +264,15 @@ final class Catalog {
         return made
     }
 
-    /// Draws the icons of the added apps ahead of time, so the first search after launch is as quick as any other.
+    /// Draws the icons of the added apps and pages ahead of time, so the first search after launch is as quick as any
+    /// other.
     func prepareIcons(points: CGFloat, scale: CGFloat) {
-        for app in apps { _ = icon(app.path, points: points, scale: scale) }
+        for path in apps.map(\.path) + panes.map(\.icon) { _ = icon(path, points: points, scale: scale) }
     }
 
-    /// Keeps only the icons of added apps (Settings may have drawn many more).
+    /// Keeps only the icons of added apps and pages (Settings may have drawn many more).
     func trimIcons() {
-        let keep = Set(apps.map(\.path))
+        let keep = Set(apps.map(\.path) + panes.map(\.icon))
         icons = icons.filter { keep.contains($0.key) }
     }
 

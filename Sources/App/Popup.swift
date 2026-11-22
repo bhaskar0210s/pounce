@@ -1,5 +1,5 @@
-// The window: opens in the middle of the main display, finds the added apps and notes as you type, works out
-// arithmetic, and opens the selected app or note with Return. Settings (⌘,) open inside the same window.
+// The window: opens in the middle of the main display, finds the added apps, notes and pages of System Settings as
+// you type, works out arithmetic, and opens the selected one with Return. Settings (⌘,) open inside the same window.
 
 import AppKit
 import Carbon
@@ -84,6 +84,7 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
     private(set) var settingsMode = false
     private var removedHere: [String] = []  // unchecked in Settings this time: kept in the list to check again
     private var removedNotesHere: [Note] = []
+    private var removedPaneHere = false      // so System Settings stays listed, to hold the page to check again
     private var listing = SettingsList.added // what the list in Settings shows
     private var notesInNotes: [Note]?        // every note in Notes, while choosing notes
     private var notesInNotesHaystacks: [Haystack] = []
@@ -238,11 +239,13 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
         panel?.makeFirstResponder(field)
     }
 
-    /// Settings open on the apps and notes added. Notes' titles are read again then, in case some changed in Notes.
+    /// Settings open on the apps, notes and pages added. Notes' titles are read again then, in case some changed in
+    /// Notes.
     private func resetSettingsList() {
         listing = .added
         removedHere = []
         removedNotesHere = []
+        removedPaneHere = false
         notesProblem = nil
         if settingsMode && !catalog.notes.isEmpty { readNotesInBackground() }
     }
@@ -377,19 +380,24 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
             if let value = Calc.evaluate(query, decimal: decimalSeparator) {
                 rows.append(ResultRow(kind: .calc(value, display(value)), name: ""))
             }
-            let apps = catalog.apps, notes = catalog.notes
-            // The apps and notes chosen before come first, the most recent first: the previous selection wins.
-            let recency = apps.map { recents.place(of: $0.path) } + notes.map { recents.place(of: $0.link) }
-            let matches = rank(query, names: apps.map(\.name) + notes.map(\.title), haystacks: apps.map(\.haystack) + notes.map(\.haystack),
+            let apps = catalog.apps, notes = catalog.notes, panes = catalog.panes
+            // The apps, notes and pages chosen before come first, the most recent first: the previous selection wins.
+            let recency = apps.map { recents.place(of: $0.path) } + notes.map { recents.place(of: $0.link) } + panes.map { recents.place(of: $0.link) }
+            let matches = rank(query, names: apps.map(\.name) + notes.map(\.title) + panes.map(\.title),
+                               haystacks: apps.map(\.haystack) + notes.map(\.haystack) + panes.map(\.haystack),
                                recency: recency, limit: maxRows - rows.count)
             rows += matches.map { match in
                 if match.index < apps.count {
                     return ResultRow(kind: .app(apps[match.index].path), name: apps[match.index].name, bold: match.positions)
                 }
-                let note = notes[match.index - apps.count]
-                return ResultRow(kind: .note(note.id), name: note.title, bold: match.positions, detail: "Notes")
+                if match.index < apps.count + notes.count {
+                    let note = notes[match.index - apps.count]
+                    return ResultRow(kind: .note(note.id), name: note.title, bold: match.positions, detail: "Notes", iconFile: Catalog.notesApp)
+                }
+                let pane = panes[match.index - apps.count - notes.count]
+                return ResultRow(kind: .pane(pane.id), name: pane.title, bold: match.positions, detail: "System Settings", iconFile: pane.icon)
             }
-            list.emptyText = apps.isEmpty && notes.isEmpty ? "No apps added yet. Press ⌘, to add some." : "No match. Press ⌘, to add apps."
+            list.emptyText = apps.isEmpty && notes.isEmpty && panes.isEmpty ? "No apps added yet. Press ⌘, to add some." : "No match. Press ⌘, to add apps."
         }
         // In Settings nothing is selected until there is something to look for: the list is for reading first.
         list.setRows(rows, select: !settingsMode || !Query(query).isEmpty)
@@ -398,8 +406,9 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
         if tracing { NSLog("query [%@] %ld rows %.3f ms", query, rows.count, (CACurrentMediaTime() - start) * 1000) }
     }
 
-    /// Settings' own list: the added apps by name, and under Notes, with its Choose Notes button, the added notes. What
-    /// was unchecked this time stays, unchecked, until Settings close.
+    /// Settings' own list: the added apps by name; under Notes, with its Choose Notes button, the added notes; and under
+    /// System Settings the pages Pounce can open, checked when added. What was unchecked this time stays, unchecked,
+    /// until Settings close.
     private func addedRows() -> [ResultRow] {
         var apps = catalog.apps.map { ResultRow(kind: .app($0.path), name: $0.name, checked: true) }
         for path in removedHere where !catalog.contains(path) {
@@ -410,14 +419,23 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
             notes.append(ResultRow(kind: .note(note.id), name: note.title, checked: false, indented: true))
         }
         notes.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        // Notes added while Notes itself isn't: Notes is listed, unchecked, to hold them.
+        // Notes or pages added while their app isn't: the app is listed, unchecked, to hold them.
         if !notes.isEmpty && !apps.contains(where: { $0.path.map(catalog.isNotesApp) == true }) {
             apps.append(ResultRow(kind: .app(Catalog.notesApp), name: Catalog.displayName(Catalog.notesApp), checked: false))
+        }
+        if (!catalog.panes.isEmpty || removedPaneHere) && !apps.contains(where: { $0.path.map(catalog.isSystemSettingsApp) == true }) {
+            apps.append(ResultRow(kind: .app(Catalog.systemSettingsApp), name: Catalog.displayName(Catalog.systemSettingsApp), checked: false))
         }
         apps.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         if let index = apps.firstIndex(where: { $0.path.map(catalog.isNotesApp) == true }) {
             apps[index].accessory = "Choose Notes"
             apps.insert(contentsOf: notes, at: index + 1)
+        }
+        if let index = apps.firstIndex(where: { $0.path.map(catalog.isSystemSettingsApp) == true }) {
+            let panes = catalog.offeredPanes.map {
+                ResultRow(kind: .pane($0.id), name: $0.title, checked: catalog.containsPane($0.id), indented: true, iconFile: $0.icon)
+            }
+            apps.insert(contentsOf: panes, at: index + 1)
         }
         return apps
     }
@@ -568,8 +586,8 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
 
     // MARK: Actions
 
-    /// In Settings a click on a row's circle adds or removes the app or note, a click on Choose Notes lists the notes
-    /// in Notes, and a click elsewhere selects the row (for Remove); in the results a click opens the app or note.
+    /// In Settings a click on a row's circle adds or removes the app, note or page, a click on Choose Notes lists the
+    /// notes in Notes, and a click elsewhere selects the row (for Remove); in the results a click opens it.
     func listDidClick(_ row: Int, part: ResultList.Part) {
         if settingsMode {
             switch part {
@@ -587,8 +605,8 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
         catalog.icon(path, points: iconPoints, scale: scale)
     }
 
-    /// Opens a result (in Settings: adds or removes the app or note). `chosen`: picked with the arrow keys or a click,
-    /// not just the top result taken with Return. Only a choice moves the app or note to the front of the order.
+    /// Opens a result (in Settings: adds or removes the app, note or page). `chosen`: picked with the arrow keys or a
+    /// click, not just the top result taken with Return. Only a choice moves it to the front of the order.
     private func activate(_ index: Int, chosen: Bool) {
         guard let list, list.rows.indices.contains(index) else { return }
         let row = list.rows[index]
@@ -614,6 +632,15 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
                     removedNotesHere.removeAll { $0.id == id }
                 }
                 list.setChecked(catalog.containsNote(id), at: index)
+            case .pane(let id):
+                if catalog.containsPane(id) {
+                    catalog.removePane(id)
+                    removedPaneHere = true
+                    forgetChoice(Catalog.paneLink(id))
+                } else {
+                    catalog.addPane(id)
+                }
+                list.setChecked(catalog.containsPane(id), at: index)
             case .calc:
                 return
             }
@@ -633,7 +660,12 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
             guard let link = noteLink(id) else { return }
             if chosen { record(link) }
             close()
-            if let openForTesting { openForTesting(link) } else { openNote(link) }
+            if let openForTesting { openForTesting(link) } else { openLink(link) }
+        case .pane(let id):
+            let link = Catalog.paneLink(id)
+            if chosen { record(link) }
+            close()
+            if let openForTesting { openForTesting(link) } else { openLink(link) }
         }
     }
 
@@ -642,7 +674,7 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
         defaults.set(recents.paths, forKey: Defaults.recents)
     }
 
-    /// An app or note taken out of Pounce loses its place in the order.
+    /// An app, note or page taken out of Pounce loses its place in the order.
     private func forgetChoice(_ choice: String) {
         recents.forget(choice)
         defaults.set(recents.paths, forKey: Defaults.recents)
@@ -718,14 +750,14 @@ final class Popup: NSObject, NSWindowDelegate, SearchFieldDelegate, ResultListDe
         if tracing { NSLog("open app %.2f ms", (CACurrentMediaTime() - start) * 1000) }
     }
 
-    /// Opens Notes on the note, with its applenotes: link.
-    private func openNote(_ link: String) {
+    /// Opens Notes on a note, or System Settings on a page, with its link.
+    private func openLink(_ link: String) {
         guard let url = URL(string: link) else { return }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.open(url, configuration: configuration) { _, error in
             guard let error else { return }
-            NSLog("Pounce couldn't open a note: %@", error.localizedDescription)
+            NSLog("Pounce couldn't open a note or page: %@", error.localizedDescription)
             Task { @MainActor in NSSound.beep() }
         }
     }

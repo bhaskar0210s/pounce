@@ -118,7 +118,7 @@ private func systemShortcutUsing(keyCode: UInt32, modifiers: UInt32) -> String? 
     return nil
 }
 
-/// What the list in Settings shows: the apps and notes added, every installed app, or every note in Notes.
+/// What the list in Settings shows: the apps, notes and pages added, every installed app, or every note in Notes.
 enum SettingsList {
     case added, apps, notes
 }
@@ -258,7 +258,7 @@ final class SettingsFooter: CanvasView {
         get { remove.action }
         set { remove.action = newValue }
     }
-    /// Remove works on the selected app or note, when it is one of the added ones.
+    /// Remove works on the selected app, note or page, when it is one of the added ones.
     var canRemove = false { didSet { remove.isEnabled = canRemove } }
     var choosing = false {
         didSet {
@@ -275,7 +275,7 @@ final class SettingsFooter: CanvasView {
         add.toolTip = "Find installed apps to add"
         remove.title = "Remove"
         remove.glyph = .minus
-        remove.toolTip = "Remove the selected app or note from Pounce"
+        remove.toolTip = "Remove the selected item from Pounce"
         remove.isEnabled = false
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         quit.title = "Quit"

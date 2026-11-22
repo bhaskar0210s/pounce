@@ -10,6 +10,7 @@
 //   offscreen on|off      keep the window out of sight (long runs)
 //   click <row> [check|button]   a click on a row, its circle or its button
 //   notes <id>=<title>|…  the added notes          notesdb <path>         read notes from this database, not Notes'
+//   panes <id>|…          the added pages of System Settings
 
 import AppKit
 import Carbon
@@ -71,10 +72,12 @@ private func state() -> String {
     for (index, row) in popup.rowsForTesting.enumerated() {
         let check = row.checked.map { $0 ? " [x]" : " [ ]" } ?? ""
         let extras = (row.indented ? " indented" : "") + (row.accessory.map { " {\($0)}" } ?? "") + (row.detail.map { " <\($0)>" } ?? "")
+            + (row.iconFile.map { " icon=\(($0 as NSString).lastPathComponent)" } ?? "")
         switch row.kind {
         case .calc(_, let shown): lines.append("  \(index): = \(shown)")
         case .app(let path): lines.append("  \(index): \(row.name)\(check) (\(path)) bold=\(row.bold)\(extras)")
         case .note(let id): lines.append("  \(index): \(row.name)\(check) (note \(id)) bold=\(row.bold)\(extras)")
+        case .pane(let id): lines.append("  \(index): \(row.name)\(check) (pane \(id)) bold=\(row.bold)\(extras)")
         }
     }
     if popup.rowsForTesting.isEmpty, let empty = popup.list?.emptyText, !empty.isEmpty { lines.append("  (empty: \(empty))") }
@@ -208,6 +211,10 @@ private func run(_ line: String) {
     case "notesdb":
         popup.notesDatabase = argument
         reply("ok")
+    case "panes":
+        UserDefaults.standard.set(argument.split(separator: "|").map(String.init), forKey: Defaults.panes)
+        popup.catalog.load()
+        reply("ok \(popup.catalog.panes.count) pages")
     case "recents":
         reply(UserDefaults.standard.stringArray(forKey: Defaults.recents)?.joined(separator: " | ") ?? "(none)")
     case "pasteboard":
